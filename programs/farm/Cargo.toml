@@ -1,12 +1,12 @@
 [package]
-name = "platform"
+name = "farm"
 version = "0.1.0"
 description = "Created with Anchor"
-edition = "2018"
+edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "platform"
+name = "farm"
 
 [features]
 no-entrypoint = []
@@ -18,4 +18,3 @@ default = []
 [dependencies]
 anchor-lang = "0.25.0"
 anchor-spl = "0.25.0"
-farm = { path = "../farm", features = ["cpi"] }

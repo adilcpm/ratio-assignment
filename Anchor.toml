@@ -1,14 +1,15 @@
 [features]
 seeds = false
 [programs.localnet]
-farm_test = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+platform = "9LhUyaj7hcpBMZVrigHUyrsq5tysdD47NgEzsXB9Nt4z"
+farm = "6mMVWS9wvoME4hg3DdytZGVMQT7f6hX2KKPQMRMhe7iv"
 
 [registry]
 url = "https://anchor.projectserum.com"
 
 [provider]
 cluster = "localnet"
-wallet = "/Users/matthias/.config/solana/id.json"
+wallet = "/home/adilcpm/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
