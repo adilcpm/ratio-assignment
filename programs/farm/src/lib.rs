@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Burn, CloseAccount, Mint, MintTo, Token, TokenAccount, Transfer};
+use anchor_spl::token::{ self, Transfer, Mint, Token, TokenAccount};
 
 declare_id!("6mMVWS9wvoME4hg3DdytZGVMQT7f6hX2KKPQMRMhe7iv");
 
@@ -7,65 +7,107 @@ declare_id!("6mMVWS9wvoME4hg3DdytZGVMQT7f6hX2KKPQMRMhe7iv");
 pub mod farm {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, bump: u8) -> Result<()> {
-        msg!("CREATING FARM!");
+    pub fn create_farm(_ctx: Context<CreateFarm>) -> Result<()> {
+        msg!("CREATING FARM !");
 
-        let farm_account = &mut ctx.accounts.farm_account;
+        Ok(())
+    }
 
-        farm_account.pool_test_token = ctx.accounts.pool_account.key();
-        farm_account.time_elapsed = 0;
-        farm_account.staked = 0;
-        farm_account.bump = bump;
-        farm_account.authority = ctx.accounts.authority.key();
+    pub fn stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
+        msg!("STAKING !");
 
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.pool_account.to_account_info(),
+            to: ctx.accounts.farm_account.to_account_info(),
+            authority: ctx.accounts.global_state_account.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, amount)?;
+        Ok(())
+    }
+
+    pub fn harvest(ctx: Context<Harvest>, time_of_initial_staking: i64, rewards_per_second: i64) -> Result<()> {
+        let reward_amount = reward_calculation(ctx.accounts.farm_account.amount, time_of_initial_staking, rewards_per_second).try_into().unwrap();
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.pool_account.to_account_info(),
+            to: ctx.accounts.user_token_account.to_account_info(),
+            authority: ctx.accounts.global_state_account.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, reward_amount)?;
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
+pub struct CreateFarm<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    #[account(mut, has_one = authority)]
-    pub global_state_account: Box<Account<'info, GlobalStateAccount>>,
-    #[account(init,
-        seeds = [global_state_account.key().as_ref() , pool_account.key().as_ref()],
-        bump,
-        payer = authority,
-        space = FarmAccount::LEN + 8
-    )]
-    pub farm_account: Box<Account<'info, FarmAccount>>,
+
+    /// CHECK: checks done at caller prior to CPI
+    // Global State Account
+    #[account(mut)]
+    pub global_state_account: UncheckedAccount<'info>,
+    
     #[account(
-        token::mint = global_state_account.mint_test_token,
-        token::authority = authority,
+        init,
+        token::mint = mint_test_token,
+        token::authority = pool_account,
+        payer = authority
     )]
+    pub farm_account: Box<Account<'info, TokenAccount>>,
+
+    #[account(signer)]
     pub pool_account: Box<Account<'info, TokenAccount>>,
+    pub mint_test_token: Box<Account<'info, Mint>>,
+
+    // Programs and Sysvars
+    pub token_program: Program<'info, Token>,
+    pub rent: Sysvar<'info, Rent>,
     pub system_program: Program<'info, System>,
 }
 
-#[account]
-pub struct GlobalStateAccount {
-    pub state_name: [u8; 10], // 10
-    pub state_bump: u8,       // 1
-    pub authority: Pubkey,    // 32
+#[derive(Accounts)]
+pub struct Stake<'info> {
+    /// CHECK: checks done at caller prior to CPI
+    // Global State Account
+    #[account(signer)]
+    pub global_state_account: AccountInfo<'info>,
+    
+    #[account(mut)]
+    pub farm_account: Box<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    pub pool_account: Box<Account<'info, TokenAccount>>,
 
-    pub pool_name: [u8; 10],     // 10
-    pub pool_bump: u8,           // 1
-    pub pool_test_token: Pubkey, // 32
-    pub mint_test_token: Pubkey, // 32
-    pub total_deposits: u64,     //8
-    pub total_farmed: u64,       //8
+    // Programs and Sysvars
+    pub token_program: Program<'info, Token>,
 }
 
-#[account]
-pub struct FarmAccount {
-    pub authority: Pubkey,       // 32
-    pub bump: u8,                // 1
-    pub time_elapsed: u64,       // 8
-    pub staked: u64,             // 8
-    pub pool_test_token: Pubkey, // 32
+#[derive(Accounts)]
+pub struct Harvest<'info> {
+    /// CHECK: checks done at caller prior to CPI
+    // Global State Account
+    #[account(signer)]
+    pub global_state_account: AccountInfo<'info>,
+    
+    #[account(mut)]
+    pub farm_account: Box<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    pub pool_account: Box<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    pub user_token_account: Box<Account<'info, TokenAccount>>,
+
+    // Programs and Sysvars
+    pub token_program: Program<'info, Token>,
 }
 
-impl FarmAccount {
-    pub const LEN: usize = 32 + 8 + 8 + 32 + 1;
+fn reward_calculation(staked_amount: u64,time_of_initial_staking: i64, rewards_per_second: i64) -> i64 {
+    let staked_amount = staked_amount.try_into().unwrap();
+    let current_time = Clock::get().unwrap().unix_timestamp;
+    let time_elapsed = current_time.checked_sub(time_of_initial_staking).unwrap();
+    let reward = time_elapsed.checked_mul(staked_amount).unwrap().checked_mul(rewards_per_second).unwrap();
+    msg!("Time of Initial Staking: {}\nCurrent Time: {}\nTime Elapsed: {}\nReward amount: {}",time_of_initial_staking,current_time,time_elapsed,reward);
+    return reward
 }
