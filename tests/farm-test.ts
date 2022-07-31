@@ -4,10 +4,10 @@ import { Platform } from "../target/types/platform";
 import { Farm } from "../target/types/farm";
 
 import { getMint, createMint, getOrCreateAssociatedTokenAccount, getAccount as getTokenAccount, Account as tokenAccount, mintTo } from '@solana/spl-token';
-import { assert } from "chai";
+import { assert, AssertionError } from "chai";
 
-const REWARDS_PER_SECOND: number = new anchor.BN(0.01);
-const DECIMALS : number = 6;
+const REWARDS_PER_SECOND: number = 0.01;
+const DECIMALS: number = 6;
 
 describe("farm-test", () => {
   // Configure the client to use the local cluster.
@@ -29,14 +29,14 @@ describe("farm-test", () => {
   let farmAccountPda: anchor.web3.PublicKey;
   let farmAccountPdaBump: number;
 
+  let harvestSignerPda: anchor.web3.PublicKey;
+  let harvestSignerPdaBump: number;
+
   let testTokenMint: anchor.web3.PublicKey;
 
   let poolTestTokenAccount: tokenAccount;
   let baseUserTestTokenAccount: tokenAccount;
-
-  let slotWhenStaking: number, timestampWhenStaking: number;
-  let slotWhenHarvesting: number, timestampWhenHarvesting: number;
-  
+  let harvestTestTokenAccount: tokenAccount;
 
   it("BOILER PLATE: Funding and Pda", async () => {
     const [_globalStatePda, _globalStatePdaBump] = await anchor.web3.PublicKey.findProgramAddress(
@@ -60,9 +60,18 @@ describe("farm-test", () => {
     farmAccountPda = _farmAccountPda;
     farmAccountPdaBump = _farmAccountPdaBump;
 
+    // This signer PDA will be used as owner for Harvest Token Account which will be the treasury for rewards
+    const [_harvestSignerPda, _harvestSignerPdaBump] = await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("harvest")],
+      program.programId
+    );
+    harvestSignerPda = _harvestSignerPda;
+    harvestSignerPdaBump = _harvestSignerPdaBump;
+
     console.log("Global State Account Pda: ", globalStatePda.toString())
     console.log("Pool Account Pda: ", poolAccountPda.toString())
     console.log("Farm Account Pda: ", farmAccountPda.toString())
+    console.log("Harvest Signer Pda: ", harvestSignerPda.toString())
     console.log("Super User Pubkey: ", superUser.publicKey.toString())
     console.log("Base User Pubkey: ", baseUser.publicKey.toString())
 
@@ -82,9 +91,10 @@ describe("farm-test", () => {
       })
     )
     await provider.sendAndConfirm(transaction);
+
   });
 
-  it("Create Global State", async () => {
+  it("Super User Create Global State", async () => {
     await program.methods.initializeGlobalState(
       globalStatePdaBump,
     ).accounts(
@@ -106,6 +116,14 @@ describe("farm-test", () => {
     testTokenMint = await createMint(provider.connection, wallet.payer, superUser.publicKey, superUser.publicKey, DECIMALS);
     let mint = await getMint(provider.connection, testTokenMint)
     assert.ok(mint.isInitialized)
+  });
+
+  it("Super-User mint testToken to Harvest Pool", async () => {
+    const INITIAL_TEST_TOKEN_HARVEST = 100 * ((10) ** DECIMALS);
+    harvestTestTokenAccount = await getOrCreateAssociatedTokenAccount(provider.connection, wallet.payer, testTokenMint, harvestSignerPda, true);
+    await mintTo(provider.connection, wallet.payer, testTokenMint, harvestTestTokenAccount.address, superUser, INITIAL_TEST_TOKEN_HARVEST);
+    harvestTestTokenAccount = await getTokenAccount(provider.connection, harvestTestTokenAccount.address);
+    assert.ok(Number(harvestTestTokenAccount.amount) == INITIAL_TEST_TOKEN_HARVEST)
   });
 
   it("Super-User Create Pool", async () => {
@@ -191,6 +209,7 @@ describe("farm-test", () => {
   it("Create Farm Account", async () => {
     await program.methods.createFarm(
       farmAccountPdaBump,
+      harvestSignerPdaBump,
       REWARDS_PER_SECOND
     ).accounts({
       authority: superUser.publicKey,
@@ -211,19 +230,20 @@ describe("farm-test", () => {
 
   it("Stake", async () => {
     let amount_to_stake = new anchor.BN(3 * ((10) ** DECIMALS));
-    
+
     await program.methods.stake(
       amount_to_stake
     ).accounts({
       user: baseUser.publicKey,
       farmAccount: farmAccountPda,
+      harvestAccount: harvestTestTokenAccount.address,
+      harvestSigner: harvestSignerPda,
+      userTokenAccount: baseUserTestTokenAccount.address,
       poolAccount: poolAccountPda,
       globalStateAccount: globalStatePda,
       tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
       farmProgram: farmProgram.programId,
     }).signers([baseUser]).rpc();
-    slotWhenStaking = await provider.connection.getSlot();
-    timestampWhenStaking = await provider.connection.getBlockTime(slotWhenStaking);
 
     let farmAccount = await getTokenAccount(provider.connection, farmAccountPda);
     let globalStateAccount = await program.account.globalStateAccount.fetch(globalStatePda);
@@ -232,43 +252,109 @@ describe("farm-test", () => {
   });
 
   it("Harvest", async () => {
+    // To test out the staking rewards for 5 seconds
     await sleep(5000);
-  
+
+    let globalStateAccountBefore = await program.account.globalStateAccount.fetch(globalStatePda);
     let baseUserTestTokenAccountBefore = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
+
     await program.methods.harvest().accounts({
       farmAccount: farmAccountPda,
       farmProgram: farmProgram.programId,
       globalStateAccount: globalStatePda,
-      poolAccount: poolAccountPda,
+      harvestAccount: harvestTestTokenAccount.address,
+      harvestSigner: harvestSignerPda,
       tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
       user: baseUser.publicKey,
       userTokenAccount: baseUserTestTokenAccount.address
     }).signers([baseUser]).rpc();
 
     // Reward Calculation
-    slotWhenHarvesting = await provider.connection.getSlot();
-    timestampWhenHarvesting = await provider.connection.getBlockTime(slotWhenHarvesting);
+    let slotWhenHarvesting = await provider.connection.getSlot();
+    let timestampWhenHarvesting = await provider.connection.getBlockTime(slotWhenHarvesting);
+    let timestampWhenStaking = globalStateAccountBefore.timeOfLastHarvest;
     let timeElapsed = timestampWhenHarvesting - timestampWhenStaking;
     let farmAccount = await getTokenAccount(provider.connection, farmAccountPda);
-    let reward = calculate_reward(Number(farmAccount.amount),timeElapsed);
-    console.log("Approximate Harvested Reward : ",reward);
+    let reward = calculate_reward(Number(farmAccount.amount), timeElapsed);
+    console.log("Approximate Harvested Reward : ", reward / ((10) ** DECIMALS));
     baseUserTestTokenAccount = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
-    
-    // Verifying the correct reward with a tolerance of 2 seconds
-    let rewardForTwoSeconds = calculate_reward(Number(farmAccount.amount),2);
 
+    // Verifying the correct reward with a tolerance of 2 seconds
+    let rewardForTwoSeconds = calculate_reward(Number(farmAccount.amount), 2);
     assert.ok(Math.abs(Number(baseUserTestTokenAccount.amount - baseUserTestTokenAccountBefore.amount) - reward) <= rewardForTwoSeconds);
   });
 
+  it("Unstake", async () => {
+    let amount_to_un_stake = new anchor.BN(3 * ((10) ** DECIMALS));
+    let farmAccountBefore = await getTokenAccount(provider.connection, farmAccountPda);
+    let globalStateAccountBefore = await program.account.globalStateAccount.fetch(globalStatePda);
+    let baseUserTestTokenAccountBefore = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
+
+    await program.methods.unStake(
+      amount_to_un_stake
+    ).accounts({
+      user: baseUser.publicKey,
+      farmAccount: farmAccountPda,
+      harvestAccount: harvestTestTokenAccount.address,
+      harvestSigner: harvestSignerPda,
+      userTokenAccount: baseUserTestTokenAccount.address,
+      poolAccount: poolAccountPda,
+      globalStateAccount: globalStatePda,
+      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      farmProgram: farmProgram.programId,
+    }).signers([baseUser]).rpc();
+    let globalStateAccount = await program.account.globalStateAccount.fetch(globalStatePda);
+    let farmAccount = await getTokenAccount(provider.connection, farmAccountPda);
+    baseUserTestTokenAccount = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
+
+    // Reward Calculation
+    let slotWhenHarvesting = await provider.connection.getSlot();
+    let timestampWhenHarvesting = await provider.connection.getBlockTime(slotWhenHarvesting);
+    let timestampWhenStaking = globalStateAccountBefore.timeOfLastHarvest;
+    let timeElapsed = timestampWhenHarvesting - timestampWhenStaking;
+    let reward = calculate_reward(Number(farmAccountBefore.amount), timeElapsed);
+    console.log("Approximate Harvested Reward : ", reward / ((10) ** DECIMALS));
+    let rewardForTwoSeconds = calculate_reward(Number(farmAccountBefore.amount), 2);
+
+
+    // Verifying the correct reward with a tolerance of 2 seconds
+    assert.ok(Math.abs(Number(baseUserTestTokenAccount.amount - baseUserTestTokenAccountBefore.amount) - reward) <= rewardForTwoSeconds);
+
+    assert.ok((farmAccountBefore.amount - farmAccount.amount) == BigInt(amount_to_un_stake.toNumber()));
+    assert.ok((globalStateAccountBefore.totalStaked - globalStateAccount.totalStaked) == amount_to_un_stake.toNumber());
+  });
+
+  it("Base user withdraws testToken from Pool ", async () => {
+    let withdrawAmount = new anchor.BN(3 * ((10) ** DECIMALS));
+
+    let poolTestTokenAccountBefore = await getTokenAccount(provider.connection, poolAccountPda);
+    let baseUserTestTokenAccountBefore = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
+
+    await program.methods.withdraw(
+      withdrawAmount
+    ).accounts({
+      user: baseUser.publicKey,
+      poolAccount: poolAccountPda,
+      userTokenAccount: baseUserTestTokenAccount.address,
+      globalStateAccount: globalStatePda,
+      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+    }).signers([baseUser]).rpc();
+
+    poolTestTokenAccount = await getTokenAccount(provider.connection, poolAccountPda);
+    baseUserTestTokenAccount = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
+    assert.ok((poolTestTokenAccountBefore.amount - poolTestTokenAccount.amount) == BigInt(withdrawAmount.toNumber()));
+    assert.ok((baseUserTestTokenAccount.amount - baseUserTestTokenAccountBefore.amount) == BigInt(withdrawAmount.toNumber()));
+  });
 
 });
 
 // Our own sleep function.
-function sleep(ms) {
+function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function calculate_reward(stakedAmount: number, timeElapsed: number){
+// Function to calculate reward given staked amount and time elapsed
+function calculate_reward(stakedAmount: number, timeElapsed: number) {
   let reward = stakedAmount * timeElapsed * REWARDS_PER_SECOND;
   return reward;
 }

@@ -13,8 +13,8 @@ pub mod farm {
         Ok(())
     }
 
-    pub fn stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
-        msg!("STAKING !");
+    pub fn stake_farm(ctx: Context<Stake>, amount: u64) -> Result<()> {
+        msg!("STAKING : {}", amount);
 
         let cpi_accounts = Transfer {
             from: ctx.accounts.pool_account.to_account_info(),
@@ -27,17 +27,33 @@ pub mod farm {
         Ok(())
     }
 
-    pub fn harvest(ctx: Context<Harvest>, time_of_initial_staking: i64, rewards_per_second: i64) -> Result<()> {
-        let reward_amount = reward_calculation(ctx.accounts.farm_account.amount, time_of_initial_staking, rewards_per_second).try_into().unwrap();
+    pub fn un_stake_farm(ctx: Context<UnStake>, amount: u64) -> Result<()> {
+        msg!("UNSTAKING : {}", amount);
+
         let cpi_accounts = Transfer {
-            from: ctx.accounts.pool_account.to_account_info(),
-            to: ctx.accounts.user_token_account.to_account_info(),
-            authority: ctx.accounts.global_state_account.to_account_info(),
+            from: ctx.accounts.farm_account.to_account_info(),
+            to: ctx.accounts.pool_account.to_account_info(),
+            authority: ctx.accounts.pool_account.to_account_info(),
         };
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-        token::transfer(cpi_ctx, reward_amount)?;
+        token::transfer(cpi_ctx, amount)?;
         Ok(())
+    }
+
+    pub fn harvest_farm(ctx: Context<Harvest>, time_of_initial_staking: i64, rewards_per_second: f32) -> Result<i64> {
+        let reward_amount: i64 = reward_calculation(ctx.accounts.farm_account.amount, time_of_initial_staking, rewards_per_second).try_into().unwrap();
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.harvest_account.to_account_info(),
+            to: ctx.accounts.user_token_account.to_account_info(),
+            authority: ctx.accounts.harvest_signer.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, reward_amount.try_into().unwrap())?;
+        msg!("HARVESTING : {}", reward_amount);
+
+        Ok(reward_amount)
     }
 }
 
@@ -59,7 +75,7 @@ pub struct CreateFarm<'info> {
     )]
     pub farm_account: Box<Account<'info, TokenAccount>>,
 
-    #[account(signer)]
+    // TODO check whether function can be called from client directly
     pub pool_account: Box<Account<'info, TokenAccount>>,
     pub mint_test_token: Box<Account<'info, Mint>>,
 
@@ -86,16 +102,28 @@ pub struct Stake<'info> {
 }
 
 #[derive(Accounts)]
+pub struct UnStake<'info> {
+    
+    #[account(mut)]
+    pub farm_account: Box<Account<'info, TokenAccount>>,
+    #[account(signer, mut)]
+    pub pool_account: Box<Account<'info, TokenAccount>>,
+
+    // Programs and Sysvars
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
 pub struct Harvest<'info> {
-    /// CHECK: checks done at caller prior to CPI
-    // Global State Account
-    #[account(signer)]
-    pub global_state_account: AccountInfo<'info>,
     
     #[account(mut)]
     pub farm_account: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
-    pub pool_account: Box<Account<'info, TokenAccount>>,
+    pub harvest_account: Box<Account<'info, TokenAccount>>,
+    /// CHECK: checks done at caller prior to CPI
+    #[account(signer)]
+    pub harvest_signer: AccountInfo<'info>,
+
     #[account(mut)]
     pub user_token_account: Box<Account<'info, TokenAccount>>,
 
@@ -103,11 +131,12 @@ pub struct Harvest<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-fn reward_calculation(staked_amount: u64,time_of_initial_staking: i64, rewards_per_second: i64) -> i64 {
+fn reward_calculation(staked_amount: u64,time_of_initial_staking: i64, rewards_per_second: f32) -> i64 {
     let staked_amount = staked_amount.try_into().unwrap();
     let current_time = Clock::get().unwrap().unix_timestamp;
     let time_elapsed = current_time.checked_sub(time_of_initial_staking).unwrap();
-    let reward = time_elapsed.checked_mul(staked_amount).unwrap().checked_mul(rewards_per_second).unwrap();
-    msg!("Time of Initial Staking: {}\nCurrent Time: {}\nTime Elapsed: {}\nReward amount: {}",time_of_initial_staking,current_time,time_elapsed,reward);
+    let reward: i64 = (rewards_per_second as f64 * (time_elapsed.checked_mul(staked_amount).unwrap()) as f64).round() as i64;
+    msg!("Time of Last Harvest: {}\nCurrent Time: {}\nTime Elapsed: {}\nReward amount: {}",time_of_initial_staking,current_time,time_elapsed,reward);
+    msg!("Rewards Per Second: {}",rewards_per_second);
     return reward
 }
