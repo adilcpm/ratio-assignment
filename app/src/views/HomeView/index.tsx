@@ -16,11 +16,13 @@ import { Platform } from "./platform";
 
 type globalStateAccount = IdlAccounts<Platform>['globalStateAccount'];
 
+// Input to these 5 Public Key's are printed when unit testing inside anchor
 const farmProgramAddress = new PublicKey("6mMVWS9wvoME4hg3DdytZGVMQT7f6hX2KKPQMRMhe7iv");
-const mintAddress = new PublicKey("EQPsEDvzNCJrmhYG97UV2y9KaHFxPC1N6WgRcZJchg4J");
+const globalStateAccountPda = new PublicKey("92PeeVbF5dYh331jWqjoekYU9JRDn733XkYSYo3sJPLR");
 const poolAccountPda = new PublicKey("GuxXRjL64koJWhzRVgZHeZ4Nx9dZmSHUk3uJzYuyJwYN");
 const farmAccountPda = new PublicKey("8DaKDvfStEcopBEzkj7uY7DRerXUeUY5uGw5bQ5u23mH");
-const globalStateAccountPda = new PublicKey("92PeeVbF5dYh331jWqjoekYU9JRDn733XkYSYo3sJPLR");
+const mintAddress = new PublicKey("EQPsEDvzNCJrmhYG97UV2y9KaHFxPC1N6WgRcZJchg4J");
+
 const harvestSignerPda = new PublicKey("3HiMB8G7x3LCf8uCTxxV94XzdgwWNF2qSNPXTkjAC4So");
 const endpoint = "https://api.devnet.solana.com";
 const DECIMALS: number = 6;

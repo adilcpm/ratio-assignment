@@ -45,6 +45,7 @@ pub mod platform {
         msg!("Depositing : {}", amount);
         ctx.accounts.global_state_account.total_deposits += amount;
 
+        // Transfering from user token account to pool account
         let cpi_accounts = Transfer {
             from: ctx.accounts.user_token_account.to_account_info(),
             to: ctx.accounts.pool_account.to_account_info(),
@@ -74,6 +75,7 @@ pub mod platform {
         ];
         let signers = &[&seeds[..]];
         
+        // Transfering from pool account to user account
         let cpi_accounts = Transfer {
             from: ctx.accounts.pool_account.to_account_info(),
             to: ctx.accounts.user_token_account.to_account_info(),
@@ -91,6 +93,8 @@ pub mod platform {
         global_state_account.harvest_signer_bump = harvest_signer_bump;
         global_state_account.rewards_per_seconds = rewards_per_second;
         global_state_account.total_staked = 0;
+        global_state_account.time_of_last_harvest = 0;
+
 
         // Seeds of the farm account 
         let pool_account_key = ctx.accounts.pool_account.key();
@@ -101,6 +105,7 @@ pub mod platform {
 
         let signers = &[&seeds[..]];
 
+        // CPI to farm program for Creating Farm
         let cpi_accounts = farm::cpi::accounts::CreateFarm{
             authority: ctx.accounts.authority.to_account_info(),
             farm_account: ctx.accounts.farm_account.to_account_info(),
@@ -134,8 +139,9 @@ pub mod platform {
                 b"harvest".as_ref(),
                 &[ctx.accounts.global_state_account.harvest_signer_bump],
             ];
-            
             let signers = &[&seeds[..]];
+
+            // CPI to Farm Program for Harvesting
             let cpi_accounts = farm::cpi::accounts::Harvest{
                 farm_account: ctx.accounts.farm_account.to_account_info(),
                 harvest_account: ctx.accounts.harvest_account.to_account_info(),
@@ -147,10 +153,11 @@ pub mod platform {
             let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
             farm::cpi::harvest_farm(cpi_context, time_of_initial_staking, rewards_per_second)?;
 
-            // Resetting Last Harvest
+            // Resetting Last Harvest time
             ctx.accounts.global_state_account.time_of_last_harvest = Clock::get()?.unix_timestamp;
 
         }
+        // Resetting Last Harvest time
         ctx.accounts.global_state_account.total_staked += amount;
         ctx.accounts.global_state_account.time_of_last_harvest = Clock::get()?.unix_timestamp;
 
@@ -162,8 +169,9 @@ pub mod platform {
             user_key.as_ref(),
             &[ctx.accounts.global_state_account.state_bump],
         ];
-        
         let signers = &[&seeds[..]];
+
+        // CPI to Farm Program for Staking
         let cpi_accounts = farm::cpi::accounts::Stake{
             farm_account: ctx.accounts.farm_account.to_account_info(),
             pool_account: ctx.accounts.pool_account.to_account_info(),
@@ -180,6 +188,8 @@ pub mod platform {
         if amount > ctx.accounts.global_state_account.total_staked {
             return Err(ErrorCode::InsufficientFundForUnStaking.into());
         }
+
+        // Harvesting before unstaking and resetting last harvest, so that reward calculation doesn't mess up 
         // Harvesting section
         let time_of_initial_staking = ctx.accounts.global_state_account.time_of_last_harvest;
         let rewards_per_second = ctx.accounts.global_state_account.rewards_per_seconds;
@@ -189,8 +199,9 @@ pub mod platform {
             b"harvest".as_ref(),
             &[ctx.accounts.global_state_account.harvest_signer_bump],
         ];
-        
         let signers = &[&seeds[..]];
+
+        // CPI to Farm Program for harvest
         let cpi_accounts = farm::cpi::accounts::Harvest{
             farm_account: ctx.accounts.farm_account.to_account_info(),
             harvest_account: ctx.accounts.harvest_account.to_account_info(),
@@ -215,6 +226,7 @@ pub mod platform {
             &[ctx.accounts.global_state_account.pool_bump],
         ];
         
+        // CPI to Farm program for Unstaking
         let signers = &[&seeds[..]];
         let cpi_accounts = farm::cpi::accounts::UnStake{
             farm_account: ctx.accounts.farm_account.to_account_info(),
@@ -227,7 +239,10 @@ pub mod platform {
         Ok(())
     }
 
-    pub fn harvest(ctx: Context<Harvest>) -> Result<i64> {
+    pub fn harvest(ctx: Context<Harvest>) -> Result<()> {
+        if ctx.accounts.global_state_account.total_staked == 0{
+            return Err(ErrorCode::StakeFirstBeforeHarvesting.into());
+        }
         let time_of_last_harvest = ctx.accounts.global_state_account.time_of_last_harvest;
         let rewards_per_second = ctx.accounts.global_state_account.rewards_per_seconds;
 
@@ -236,8 +251,9 @@ pub mod platform {
             b"harvest".as_ref(),
             &[ctx.accounts.global_state_account.harvest_signer_bump],
         ];
-        
         let signers = &[&seeds[..]];
+
+        // CPI to Farm program for Harvesting
         let cpi_accounts = farm::cpi::accounts::Harvest{
             farm_account: ctx.accounts.farm_account.to_account_info(),
             harvest_account: ctx.accounts.harvest_account.to_account_info(),
@@ -247,13 +263,12 @@ pub mod platform {
         };
         let cpi_program = ctx.accounts.farm_program.to_account_info();
         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
-        let result = farm::cpi::harvest_farm(cpi_context, time_of_last_harvest, rewards_per_second)?;
-        let reward = result.get();
+        farm::cpi::harvest_farm(cpi_context, time_of_last_harvest, rewards_per_second)?;
 
         // Resetting time of Last Harvest
         ctx.accounts.global_state_account.time_of_last_harvest = Clock::get()?.unix_timestamp;
 
-        Ok(reward)
+        Ok(())
     }
 }
 
@@ -592,4 +607,6 @@ pub enum ErrorCode {
     InsufficientFundForStaking,
     #[msg("Trying to UnStake more than what you have staked!")]
     InsufficientFundForUnStaking,
+    #[msg("Stake some before trying to harvest!")]
+    StakeFirstBeforeHarvesting,
 }

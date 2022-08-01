@@ -1,71 +1,35 @@
-# Farming program assignment
+# Farm and Stake by Adi
 
-This is assignment is designed to help our team evaluate proficiency with the Solana programing model, focusing on the Anchor framework
+Mini Project done for the purpose of submitting as Assignment to Ratio Finance Team
 
-This involves a building an integrated application, consisting of a frontend (React app) and a Solana program
+## How to Use Front End (already set Base User Keypair)
 
-Estimated time to complete is between 2-3 weeks
+Base User Secret Key (devnet) : [228,58,206,71,19,155,76,229,76,89,205,92,153,40,211,253,171,165,82,93,205,224,153,148,250,12,91,10,40,213,78,46,25,223,190,247,22,14,9,221,180,27,193,7,183,70,93,105,179,20,174,55,99,226,87,246,196,103,57,3,155,107,16,188]
 
-## Components to build
+Import the base user secret key from above to Wallet of your choice for interacting with the front end
 
-1. Create base-user and super-user accounts
-1. Build out `platform` program to spec
-   1. Global State (PDA)
-   1. `pool` for `testToken` (PDA)
-   1. Deposit function: user -> `pool`
-   1. Withdraw function: `pool` -> user
-1. Create a second program called `farm-program`
-   1. `farm` (PDA)
-   1. Stake function: `pool` -> `farm`
-   1. Harvest function (calls Reward Calculation function): `farm` -> user
-   1. Unstake function (calls Harvest function): `farm` -> `pool`
-   1. Reward Calculation function
-   - This calculates (time elapsed since Staking \* rewards per sec)
-1. Create React app (with Typescript) for UI, with the ability to use all of the functionality described + sign and send transactions
+```bash
+cd app
+yarn
+yarn run dev
+```
+## How to use Front End (from scratch)
 
-## Tests to be run
+1. npm install
+2. anchor test
+3. Copy the Different Account Addresses printed in terminal while anchor testing
+4. edit app/src/views/HomeView/index.tsx and input these addresses correspondingly
+5. cd app
+6. yarn
+7. yarn run dev
+8. Import the base user secret key printed on terminal to Wallet of your choice for interacting with the front end
 
-1. Create `farm` (this can be done at any step before "Stake" test)
-1. Create global state
-   1. Should __fail__ if base-user tries to call this
-1. Create token (mint) thru Anchor Typescript, called `testToken`
-1. Super-user creates `pool`
-1. Super-user mints `testToken` to `pool`
-1. Super-user mints `testToken` to base-user
-1. Base-user deposits `testToken` to `pool`
-1. Base-user should __fail__ to withdraw more than token amount the base-user deposited to `pool`
-1. Base-user stakes `testToken` from `pool` to `farm` via CPI
-1. Base-user harvests rewards (in the form of `testToken`) from `farm` to `user` via CPI
-1. Base-user unstakes `testToken` from `farm` to `pool` via CPI, also harvesting rewards
-1. Base-user withdraws `testToken` from `pool`
+## Tech Stack
 
-## Requirements
+This project includes:
 
-- There should be a base-user and a super-user
-- Typescript must be used for React app and unit-testing Solana program code
-- The tester needs to be able to:
-  1.  clone the repo
-  1.  run `anchor test` and all tests need to pass
-  1.  click through each feature without failing
-  1.  sign and send transactions without failing
-
-### Guidelines:
-
-- Clone repo
-- Create new branch
-- Create the React app in the `app` directory, this must use typescript
-- Commits should be made often, and they should be small, preferably at each feature addition/update
-- Submit PR (`git push`)
-
-
-## questions & answers
-
-1. How could you get the real-world market price of token in the contract?
-
-1. How do you call another contract's function in your contract?
-
-1. How can you get account information in your contract?
-
-1. How do you deposit SOL to your contract?
-
-1. What is difference between devnet & testnet on Solana?
+- Anchor
+- Next.JS
+- TypeScript
+- [@solana/wallet-adapter](https://github.com/solana-labs/wallet-adapter) and [@solana/web3.js](https://solana-labs.github.io/solana-web3.js) for interactions with wallets & blockchain.
+- Tailwind CSS (with [daisyUI](https://daisyui.com/))

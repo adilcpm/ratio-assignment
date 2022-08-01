@@ -8,7 +8,7 @@ farm = "6mMVWS9wvoME4hg3DdytZGVMQT7f6hX2KKPQMRMhe7iv"
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "/home/adilcpm/.config/solana/id.json"
 
 [scripts]

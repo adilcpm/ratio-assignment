@@ -41,7 +41,7 @@ pub mod farm {
         Ok(())
     }
 
-    pub fn harvest_farm(ctx: Context<Harvest>, time_of_initial_staking: i64, rewards_per_second: f32) -> Result<i64> {
+    pub fn harvest_farm(ctx: Context<Harvest>, time_of_initial_staking: i64, rewards_per_second: f32) -> Result<()> {
         let reward_amount: i64 = reward_calculation(ctx.accounts.farm_account.amount, time_of_initial_staking, rewards_per_second).try_into().unwrap();
         let cpi_accounts = Transfer {
             from: ctx.accounts.harvest_account.to_account_info(),
@@ -53,7 +53,7 @@ pub mod farm {
         token::transfer(cpi_ctx, reward_amount.try_into().unwrap())?;
         msg!("HARVESTING : {}", reward_amount);
 
-        Ok(reward_amount)
+        Ok(())
     }
 }
 
