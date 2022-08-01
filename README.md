@@ -18,9 +18,9 @@ yarn run dev
 1. npm install
 2. anchor test
 3. Copy the Different Account Addresses printed in terminal while anchor testing
-https://i.ibb.co/RhtZTYs/terminal.png
+![Addresses to copy]([http://url/to/img.png](https://i.ibb.co/RhtZTYs/terminal.png))
 4. edit app/src/views/HomeView/index.tsx and input these addresses correspondingly
-https://i.ibb.co/k90bJgf/index.png
+![Addresses to input]([http://url/to/img.png](https://i.ibb.co/k90bJgf/index.png))
 5. cd app
 6. yarn
 7. yarn run dev
