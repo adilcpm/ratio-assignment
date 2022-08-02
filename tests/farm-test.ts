@@ -160,13 +160,13 @@ describe("farm-test", () => {
     assert.ok(poolTestTokenAccount.owner.equals(globalStatePda));
   });
 
-  it("Super User mint testToken to pool", async () => {
-    const INITIAL_TEST_TOKEN_POOL = 100 * DECIMAL_MUL;
-    await mintTo(provider.connection, wallet.payer, testTokenMint, poolAccountPda, superUser, INITIAL_TEST_TOKEN_POOL);
-    poolTestTokenAccount = await getTokenAccount(provider.connection, poolAccountPda);
-    assert.ok(Number(poolTestTokenAccount.amount) == INITIAL_TEST_TOKEN_POOL)
+  // it("Super User mint testToken to pool", async () => {
+  //   const INITIAL_TEST_TOKEN_POOL = 100 * DECIMAL_MUL;
+  //   await mintTo(provider.connection, wallet.payer, testTokenMint, poolAccountPda, superUser, INITIAL_TEST_TOKEN_POOL);
+  //   poolTestTokenAccount = await getTokenAccount(provider.connection, poolAccountPda);
+  //   assert.ok(Number(poolTestTokenAccount.amount) == INITIAL_TEST_TOKEN_POOL)
 
-  });
+  // });
 
   it("Super User mint testToken to Base User", async () => {
     const INITIAL_TEST_TOKEN_BASE_USER = 10 * DECIMAL_MUL;
@@ -262,8 +262,10 @@ describe("farm-test", () => {
 
     let farmAccount = await getTokenAccount(provider.connection, farmAccountPda);
     let globalStateAccount = await program.account.globalStateAccount.fetch(globalStatePda);
-    assert.ok(globalStateAccount.totalStaked == BigInt(amount_to_stake.toNumber()));
+
+    assert.ok(globalStateAccount.totalStaked.eq(amount_to_stake));
     assert.ok(farmAccount.amount == BigInt(amount_to_stake.toNumber()));
+    // Not checking for rewards since there was no previous stake involved
   });
 
   it("Harvest", async () => {
@@ -276,6 +278,7 @@ describe("farm-test", () => {
     await program.methods.harvest().accounts({
       farmAccount: farmAccountPda,
       farmProgram: farmProgram.programId,
+      poolAccount: poolAccountPda,
       globalStateAccount: globalStatePda,
       harvestAccount: harvestTestTokenAccount.address,
       harvestSigner: harvestSignerPda,
@@ -287,7 +290,7 @@ describe("farm-test", () => {
     // Reward Calculation
     let slotWhenHarvesting = await provider.connection.getSlot();
     let timestampWhenHarvesting = await provider.connection.getBlockTime(slotWhenHarvesting);
-    let timestampWhenStaking = globalStateAccountBefore.timeOfLastHarvest;
+    let timestampWhenStaking = globalStateAccountBefore.timeOfLastHarvest.toNumber();
     let timeElapsed = timestampWhenHarvesting - timestampWhenStaking;
     let farmAccount = await getTokenAccount(provider.connection, farmAccountPda);
     let reward = calculate_reward(Number(farmAccount.amount), timeElapsed);
@@ -302,8 +305,8 @@ describe("farm-test", () => {
   it("Unstake", async () => {
     let amount_to_un_stake = new anchor.BN(2 * DECIMAL_MUL);
     let farmAccountBefore = await getTokenAccount(provider.connection, farmAccountPda);
+    let poolTestTokenAccountBefore = await getTokenAccount(provider.connection, poolAccountPda);
     let globalStateAccountBefore = await program.account.globalStateAccount.fetch(globalStatePda);
-    let baseUserTestTokenAccountBefore = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
 
     await program.methods.unStake(
       amount_to_un_stake
@@ -320,23 +323,27 @@ describe("farm-test", () => {
     }).signers([baseUser]).rpc();
     let globalStateAccount = await program.account.globalStateAccount.fetch(globalStatePda);
     let farmAccount = await getTokenAccount(provider.connection, farmAccountPda);
+    poolTestTokenAccount = await getTokenAccount(provider.connection, poolAccountPda);
     baseUserTestTokenAccount = await getTokenAccount(provider.connection, baseUserTestTokenAccount.address);
 
     // Reward Calculation
     let slotWhenHarvesting = await provider.connection.getSlot();
     let timestampWhenHarvesting = await provider.connection.getBlockTime(slotWhenHarvesting);
-    let timestampWhenStaking = globalStateAccountBefore.timeOfLastHarvest;
+    let timestampWhenStaking = globalStateAccountBefore.timeOfLastHarvest.toNumber();
     let timeElapsed = timestampWhenHarvesting - timestampWhenStaking;
     let reward = calculate_reward(Number(farmAccountBefore.amount), timeElapsed);
     console.log("Approximate Harvested Reward : ", reward / DECIMAL_MUL);
     let rewardForTwoSeconds = calculate_reward(Number(farmAccountBefore.amount), 2);
 
+    // Final Amount available in pool should be equal to amount unstaked + harvested rewards previous stake
+    let finalExpectedDepositedAmount = amount_to_un_stake.toNumber() + reward;
 
     // Verifying the correct reward with a tolerance of 2 seconds
-    assert.ok(Math.abs(Number(baseUserTestTokenAccount.amount - baseUserTestTokenAccountBefore.amount) - reward) <= rewardForTwoSeconds);
+    assert.ok(Math.abs((globalStateAccount.totalDeposits.sub(globalStateAccountBefore.totalDeposits)).toNumber() - finalExpectedDepositedAmount) <= rewardForTwoSeconds);
+    assert.ok(Math.abs(Number(poolTestTokenAccount.amount - poolTestTokenAccountBefore.amount) - finalExpectedDepositedAmount) <= rewardForTwoSeconds);
 
     assert.ok((farmAccountBefore.amount - farmAccount.amount) == BigInt(amount_to_un_stake.toNumber()));
-    assert.ok((globalStateAccountBefore.totalStaked - globalStateAccount.totalStaked) == amount_to_un_stake.toNumber());
+    assert.ok(globalStateAccountBefore.totalStaked.sub(globalStateAccount.totalStaked).eq(amount_to_un_stake));
   });
 
   it("Base user withdraws testToken from Pool ", async () => {

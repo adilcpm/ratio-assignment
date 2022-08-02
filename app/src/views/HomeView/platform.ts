@@ -341,6 +341,11 @@ export type Platform = {
           "isSigner": false
         },
         {
+          "name": "poolAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
           "name": "harvestAccount",
           "isMut": true,
           "isSigner": false
@@ -371,8 +376,7 @@ export type Platform = {
           "isSigner": false
         }
       ],
-      "args": [],
-      "returns": "i64"
+      "args": []
     }
   ],
   "accounts": [
@@ -448,6 +452,11 @@ export type Platform = {
       "code": 6002,
       "name": "InsufficientFundForUnStaking",
       "msg": "Trying to UnStake more than what you have staked!"
+    },
+    {
+      "code": 6003,
+      "name": "StakeFirstBeforeHarvesting",
+      "msg": "Stake some before trying to harvest!"
     }
   ]
 };
@@ -795,6 +804,11 @@ export const IDL: Platform = {
           "isSigner": false
         },
         {
+          "name": "poolAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
           "name": "harvestAccount",
           "isMut": true,
           "isSigner": false
@@ -825,8 +839,7 @@ export const IDL: Platform = {
           "isSigner": false
         }
       ],
-      "args": [],
-      "returns": "i64"
+      "args": []
     }
   ],
   "accounts": [
@@ -902,6 +915,11 @@ export const IDL: Platform = {
       "code": 6002,
       "name": "InsufficientFundForUnStaking",
       "msg": "Trying to UnStake more than what you have staked!"
+    },
+    {
+      "code": 6003,
+      "name": "StakeFirstBeforeHarvesting",
+      "msg": "Stake some before trying to harvest!"
     }
   ]
 };

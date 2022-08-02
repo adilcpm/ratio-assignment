@@ -18,10 +18,10 @@ type globalStateAccount = IdlAccounts<Platform>['globalStateAccount'];
 
 // Input to these 5 Public Key's are printed when unit testing inside anchor
 const farmProgramAddress = new PublicKey("6mMVWS9wvoME4hg3DdytZGVMQT7f6hX2KKPQMRMhe7iv");
-const globalStateAccountPda = new PublicKey("92PeeVbF5dYh331jWqjoekYU9JRDn733XkYSYo3sJPLR");
-const poolAccountPda = new PublicKey("GuxXRjL64koJWhzRVgZHeZ4Nx9dZmSHUk3uJzYuyJwYN");
-const farmAccountPda = new PublicKey("8DaKDvfStEcopBEzkj7uY7DRerXUeUY5uGw5bQ5u23mH");
-const mintAddress = new PublicKey("EQPsEDvzNCJrmhYG97UV2y9KaHFxPC1N6WgRcZJchg4J");
+const globalStateAccountPda = new PublicKey("8W8QrjEh7VT7WfveXy1npeqjrXC1LjL1ozaXEUTyZ6YA");
+const poolAccountPda = new PublicKey("Af4h85VYU5CETEMVcsJEj3aFoYqXxs8muFQvL6MJgymb");
+const farmAccountPda = new PublicKey("5eYWoZN8Nveky9tfeF3WuP4yQNwc8V6qQLxq2JwZsRXR");
+const mintAddress = new PublicKey("A1ycKQ2Vy1uktK7uQTLad7Fy5PxQZCrKs28tSTfUgUrr");
 
 const harvestSignerPda = new PublicKey("3HiMB8G7x3LCf8uCTxxV94XzdgwWNF2qSNPXTkjAC4So");
 const endpoint = "https://api.devnet.solana.com";
@@ -49,6 +49,7 @@ export const HomeView: FC = ({ }) => {
   }
 
   const refresh = () => {
+    console.log("Refreshing !");
     let value = refreshValue;
     setRefreshValue(value! + 1);
   }
@@ -137,7 +138,7 @@ const FarmAndStakeScreen = (props: any) => {
   const deposit = async () => {
     let amountToDeposit = new anchor.BN(amount! * DECIMAL_MUL);
     let userTokenAccountAddress = await getAssociatedTokenAddress(mintAddress, wallet?.publicKey);
-    let tx = await program?.methods.deposit(
+    await program?.methods.deposit(
       amountToDeposit
     ).accounts({
       user: wallet.publicKey,
@@ -146,7 +147,8 @@ const FarmAndStakeScreen = (props: any) => {
       globalStateAccount: globalStateAccountPda,
       tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
     }).rpc();
-    setAmount(undefined)
+    setAmount(undefined);
+    props.refresh();
   }
 
   const withdraw = async () => {
@@ -162,6 +164,7 @@ const FarmAndStakeScreen = (props: any) => {
       tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
     }).rpc();
     setAmount(undefined);
+    props.refresh();
   }
 
   const stake = async () => {
@@ -182,6 +185,7 @@ const FarmAndStakeScreen = (props: any) => {
       farmProgram: farmProgramAddress,
     }).rpc();
     setAmount(undefined);
+    props.refresh();
   }
 
   const unstake = async () => {
@@ -203,6 +207,7 @@ const FarmAndStakeScreen = (props: any) => {
       farmProgram: farmProgramAddress,
     }).rpc();
     setAmount(undefined);
+    props.refresh();
   }
 
   const harvest = async () => {
@@ -211,6 +216,7 @@ const FarmAndStakeScreen = (props: any) => {
     await program?.methods.harvest().accounts({
       farmAccount: farmAccountPda,
       farmProgram: farmProgramAddress,
+      poolAccount: poolAccountPda,
       globalStateAccount: globalStateAccountPda,
       harvestAccount: harvestTokenAccountAddress,
       harvestSigner: harvestSignerPda,
@@ -219,6 +225,7 @@ const FarmAndStakeScreen = (props: any) => {
       userTokenAccount: userTokenAccountAddress
     }).rpc();
     setAmount(undefined);
+    props.refresh();
   }
 
   return (

@@ -8,6 +8,8 @@ declare_id!("9LhUyaj7hcpBMZVrigHUyrsq5tysdD47NgEzsXB9Nt4z");
 #[program]
 pub mod platform {
     
+    use std::convert::TryInto;
+
     use super::*;
     pub fn initialize_global_state(
         ctx: Context<InitializeGlobalState>,
@@ -98,12 +100,28 @@ pub mod platform {
 
         // Seeds of the farm account 
         let pool_account_key = ctx.accounts.pool_account.key();
-        let seeds = [
+        let seeds1 = [
             pool_account_key.as_ref(),
             &[farm_bump],
         ];
 
-        let signers = &[&seeds[..]];
+        // Seeds of Pool Account
+        let global_state_account_key = ctx.accounts.global_state_account.key();
+        let seeds2 = [
+            global_state_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.pool_bump],
+        ];
+
+        // Seeds of Global State Account
+        let global_state_authority_key = ctx.accounts.global_state_account.authority.key();
+        let user_key = ctx.accounts.global_state_account.user;
+        let seeds3 = [
+            global_state_authority_key.as_ref(),
+            user_key.as_ref(),
+            &[ctx.accounts.global_state_account.state_bump],
+        ];
+
+        let signers = &[&seeds1[..],&seeds2[..],&seeds3[..]];
 
         // CPI to farm program for Creating Farm
         let cpi_accounts = farm::cpi::accounts::CreateFarm{
@@ -127,49 +145,83 @@ pub mod platform {
         if amount > ctx.accounts.global_state_account.total_deposits {
             return Err(ErrorCode::InsufficientFundForStaking.into());
         }
-
+        let mut _amount = amount;
+        ctx.accounts.global_state_account.total_deposits = 0;
         // Check if already staked, if so harvest it and then continue with the new stake
         if ctx.accounts.global_state_account.total_staked != 0 {
+            // Harvested amount will be added to amount to stake
+            // Harvesting before unstaking and resetting last harvest, so that reward calculation doesn't mess up 
             // Harvesting section
             let time_of_initial_staking = ctx.accounts.global_state_account.time_of_last_harvest;
             let rewards_per_second = ctx.accounts.global_state_account.rewards_per_seconds;
 
+            // Seeds of Pool Account(owner of farm Account)
+            let global_state_account_key = ctx.accounts.global_state_account.key();
+            let seeds1 = [
+                global_state_account_key.as_ref(),
+                &[ctx.accounts.global_state_account.pool_bump],
+            ];
+
+            // Seeds of the farm account 
+            let pool_account_key = ctx.accounts.pool_account.key();
+            let seeds2 = [
+                pool_account_key.as_ref(),
+                &[ctx.accounts.global_state_account.farm_bump],
+            ];
+
             // Seeds of Harvest Signer
-            let seeds = [
+            let seeds3 = [
                 b"harvest".as_ref(),
                 &[ctx.accounts.global_state_account.harvest_signer_bump],
             ];
-            let signers = &[&seeds[..]];
+            let signers = &[&seeds1[..],&seeds2[..],&seeds3[..]];
 
-            // CPI to Farm Program for Harvesting
+            // CPI to Farm program for Harvesting
             let cpi_accounts = farm::cpi::accounts::Harvest{
                 farm_account: ctx.accounts.farm_account.to_account_info(),
                 harvest_account: ctx.accounts.harvest_account.to_account_info(),
                 harvest_signer: ctx.accounts.harvest_signer.to_account_info(),
-                user_token_account: ctx.accounts.user_token_account.to_account_info(),
+                pool_account: ctx.accounts.pool_account.to_account_info(),
                 token_program: ctx.accounts.token_program.to_account_info(),
             };
             let cpi_program = ctx.accounts.farm_program.to_account_info();
             let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
-            farm::cpi::harvest_farm(cpi_context, time_of_initial_staking, rewards_per_second)?;
-
+            let return_reward = farm::cpi::harvest_farm(cpi_context, time_of_initial_staking, rewards_per_second)?;
+            
+            // Total amount: Amount to stake + harvest rewards from previous stake
+            let reward: u64 = return_reward.get().try_into().unwrap();
+            _amount += reward;
+            
             // Resetting Last Harvest time
             ctx.accounts.global_state_account.time_of_last_harvest = Clock::get()?.unix_timestamp;
-
         }
         // Resetting Last Harvest time
-        ctx.accounts.global_state_account.total_staked += amount;
         ctx.accounts.global_state_account.time_of_last_harvest = Clock::get()?.unix_timestamp;
 
+        // Seeds of Global State Account (owner of PoolAccount)
         let global_state_authority_key = ctx.accounts.global_state_account.authority.key();
         let user_key = ctx.accounts.user.key();
-        // Seeds of Global State Account (owner of PoolAccount)
-        let seeds = [
+        let seeds1 = [
             global_state_authority_key.as_ref(),
             user_key.as_ref(),
             &[ctx.accounts.global_state_account.state_bump],
         ];
-        let signers = &[&seeds[..]];
+
+        // Seeds of Pool Account
+        let global_state_account_key = ctx.accounts.global_state_account.key();
+        let seeds2 = [
+            global_state_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.pool_bump],
+        ];
+        
+        // Seeds of the farm account 
+        let pool_account_key = ctx.accounts.pool_account.key();
+        let seeds3 = [
+            pool_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.farm_bump],
+            ];
+
+        let signers = &[&seeds1[..],&seeds2[..],&seeds3[..]];
 
         // CPI to Farm Program for Staking
         let cpi_accounts = farm::cpi::accounts::Stake{
@@ -180,7 +232,12 @@ pub mod platform {
         };
         let cpi_program = ctx.accounts.farm_program.to_account_info();
         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
-        farm::cpi::stake_farm(cpi_context, amount)?;
+        farm::cpi::stake_farm(cpi_context, _amount)?;
+
+        // Setting correct state amounts
+        ctx.accounts.global_state_account.total_deposits -= amount;
+        ctx.accounts.global_state_account.total_staked += amount;
+
         Ok(())
     }
 
@@ -188,46 +245,72 @@ pub mod platform {
         if amount > ctx.accounts.global_state_account.total_staked {
             return Err(ErrorCode::InsufficientFundForUnStaking.into());
         }
-
-        // Harvesting before unstaking and resetting last harvest, so that reward calculation doesn't mess up 
+        
         // Harvesting section
+        // Harvested amount would be available in the pool Account
+        // Harvesting before unstaking and resetting last harvest, so that reward calculation doesn't mess up 
+        
         let time_of_initial_staking = ctx.accounts.global_state_account.time_of_last_harvest;
         let rewards_per_second = ctx.accounts.global_state_account.rewards_per_seconds;
 
+        // Seeds of Pool Account(owner of farm Account)
+        let global_state_account_key = ctx.accounts.global_state_account.key();
+        let seeds1 = [
+            global_state_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.pool_bump],
+        ];
+
+        // Seeds of the farm account 
+        let pool_account_key = ctx.accounts.pool_account.key();
+        let seeds2 = [
+            pool_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.farm_bump],
+            ];
+
         // Seeds of Harvest Signer
-        let seeds = [
+        let seeds3 = [
             b"harvest".as_ref(),
             &[ctx.accounts.global_state_account.harvest_signer_bump],
         ];
-        let signers = &[&seeds[..]];
+        let signers = &[&seeds1[..],&seeds2[..],&seeds3[..]];
 
-        // CPI to Farm Program for harvest
+        // CPI to Farm program for Harvesting
         let cpi_accounts = farm::cpi::accounts::Harvest{
             farm_account: ctx.accounts.farm_account.to_account_info(),
             harvest_account: ctx.accounts.harvest_account.to_account_info(),
             harvest_signer: ctx.accounts.harvest_signer.to_account_info(),
-            user_token_account: ctx.accounts.user_token_account.to_account_info(),
+            pool_account: ctx.accounts.pool_account.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
         };
         let cpi_program = ctx.accounts.farm_program.to_account_info();
         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
-        farm::cpi::harvest_farm(cpi_context, time_of_initial_staking, rewards_per_second)?;
+        let return_reward = farm::cpi::harvest_farm(cpi_context, time_of_initial_staking, rewards_per_second)?;
+        let reward: u64 = return_reward.get().try_into().unwrap();
+        
+        // Adding harvest reward to total deposit (since harvest is done to pool Account)
+        ctx.accounts.global_state_account.total_deposits += reward;
 
         //Resetting Time of Last Harvest
         ctx.accounts.global_state_account.time_of_last_harvest = Clock::get()?.unix_timestamp;
 
         // Unstaking Section
-        ctx.accounts.global_state_account.total_staked -= amount;
 
-        let global_state_account_key = ctx.accounts.global_state_account.key();
         // Seeds of Pool Account(owner of farm Account)
-        let seeds = [
+        let global_state_account_key = ctx.accounts.global_state_account.key();
+        let seeds1 = [
             global_state_account_key.as_ref(),
             &[ctx.accounts.global_state_account.pool_bump],
         ];
+
+        // Seeds of the farm account 
+        let pool_account_key = ctx.accounts.pool_account.key();
+        let seeds2 = [
+            pool_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.farm_bump],
+            ];
         
         // CPI to Farm program for Unstaking
-        let signers = &[&seeds[..]];
+        let signers = &[&seeds1[..],&seeds2[..]];
         let cpi_accounts = farm::cpi::accounts::UnStake{
             farm_account: ctx.accounts.farm_account.to_account_info(),
             pool_account: ctx.accounts.pool_account.to_account_info(),
@@ -236,6 +319,10 @@ pub mod platform {
         let cpi_program = ctx.accounts.farm_program.to_account_info();
         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
         farm::cpi::un_stake_farm(cpi_context, amount)?;
+    
+        // Setting Correct state amounts
+        ctx.accounts.global_state_account.total_staked -= amount;
+        ctx.accounts.global_state_account.total_deposits += amount;
         Ok(())
     }
 
@@ -246,24 +333,59 @@ pub mod platform {
         let time_of_last_harvest = ctx.accounts.global_state_account.time_of_last_harvest;
         let rewards_per_second = ctx.accounts.global_state_account.rewards_per_seconds;
 
+        // Seeds of Pool Account(owner of farm Account)
+        let global_state_account_key = ctx.accounts.global_state_account.key();
+        let seeds1 = [
+            global_state_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.pool_bump],
+        ];
+
+        // Seeds of the farm account 
+        let pool_account_key = ctx.accounts.pool_account.key();
+        let seeds2 = [
+            pool_account_key.as_ref(),
+            &[ctx.accounts.global_state_account.farm_bump],
+            ];
+
         // Seeds of Harvest Signer
-        let seeds = [
+        let seeds3 = [
             b"harvest".as_ref(),
             &[ctx.accounts.global_state_account.harvest_signer_bump],
         ];
-        let signers = &[&seeds[..]];
+        let signers = &[&seeds1[..],&seeds2[..],&seeds3[..]];
 
         // CPI to Farm program for Harvesting
         let cpi_accounts = farm::cpi::accounts::Harvest{
             farm_account: ctx.accounts.farm_account.to_account_info(),
             harvest_account: ctx.accounts.harvest_account.to_account_info(),
             harvest_signer: ctx.accounts.harvest_signer.to_account_info(),
-            user_token_account: ctx.accounts.user_token_account.to_account_info(),
+            pool_account: ctx.accounts.pool_account.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
         };
         let cpi_program = ctx.accounts.farm_program.to_account_info();
         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
-        farm::cpi::harvest_farm(cpi_context, time_of_last_harvest, rewards_per_second)?;
+        let return_reward = farm::cpi::harvest_farm(cpi_context, time_of_last_harvest, rewards_per_second)?;
+        let reward_amount = return_reward.get().try_into().unwrap();
+
+        // seeds of global state account PDA (owner of pool Account)
+        let global_state_authority = ctx.accounts.global_state_account.authority;
+        let user_key = ctx.accounts.user.key();
+        let seeds = [
+            global_state_authority.as_ref(),
+            user_key.as_ref(),
+            &[ctx.accounts.global_state_account.state_bump],
+        ];
+        let signers = &[&seeds[..]];
+        
+        // Transfering from pool account to user account
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.pool_account.to_account_info(),
+            to: ctx.accounts.user_token_account.to_account_info(),
+            authority: ctx.accounts.global_state_account.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signers);
+        token::transfer(cpi_ctx, reward_amount)?;
 
         // Resetting time of Last Harvest
         ctx.accounts.global_state_account.time_of_last_harvest = Clock::get()?.unix_timestamp;
@@ -541,9 +663,17 @@ pub struct Harvest<'info> {
         seeds = [global_state_account.pool_account.key().as_ref()],
         bump,
         token::mint = global_state_account.mint_test_token,
-        token::authority = global_state_account.pool_account,
+        token::authority = pool_account,
     )]
     pub farm_account: Box<Account<'info, TokenAccount>>,
+
+    #[account(mut,
+        seeds = [global_state_account.key().as_ref()],
+        bump,
+        token::mint = global_state_account.mint_test_token,
+        token::authority = global_state_account,
+    )]
+    pub pool_account: Box<Account<'info, TokenAccount>>,
 
     #[account(mut,
         token::mint = global_state_account.mint_test_token,

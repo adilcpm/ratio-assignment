@@ -41,11 +41,11 @@ pub mod farm {
         Ok(())
     }
 
-    pub fn harvest_farm(ctx: Context<Harvest>, time_of_initial_staking: i64, rewards_per_second: f32) -> Result<()> {
+    pub fn harvest_farm(ctx: Context<Harvest>, time_of_initial_staking: i64, rewards_per_second: f32) -> Result<i64> {
         let reward_amount: i64 = reward_calculation(ctx.accounts.farm_account.amount, time_of_initial_staking, rewards_per_second).try_into().unwrap();
         let cpi_accounts = Transfer {
             from: ctx.accounts.harvest_account.to_account_info(),
-            to: ctx.accounts.user_token_account.to_account_info(),
+            to: ctx.accounts.pool_account.to_account_info(),
             authority: ctx.accounts.harvest_signer.to_account_info(),
         };
         let cpi_program = ctx.accounts.token_program.to_account_info();
@@ -53,7 +53,7 @@ pub mod farm {
         token::transfer(cpi_ctx, reward_amount.try_into().unwrap())?;
         msg!("HARVESTING : {}", reward_amount);
 
-        Ok(())
+        Ok(reward_amount)
     }
 }
 
@@ -64,8 +64,8 @@ pub struct CreateFarm<'info> {
 
     /// CHECK: checks done at caller prior to CPI
     // Global State Account
-    #[account(mut)]
-    pub global_state_account: UncheckedAccount<'info>,
+    #[account(signer, mut)]
+    pub global_state_account: AccountInfo<'info>,
     
     #[account(
         init,
@@ -75,7 +75,11 @@ pub struct CreateFarm<'info> {
     )]
     pub farm_account: Box<Account<'info, TokenAccount>>,
 
-    // TODO check whether function can be called from client directly
+    #[account(
+        signer, 
+        token::mint = mint_test_token,
+        token::authority = global_state_account,
+    )]
     pub pool_account: Box<Account<'info, TokenAccount>>,
     pub mint_test_token: Box<Account<'info, Mint>>,
 
@@ -92,9 +96,16 @@ pub struct Stake<'info> {
     #[account(signer)]
     pub global_state_account: AccountInfo<'info>,
     
-    #[account(mut)]
+    #[account(signer, 
+        mut,
+        token::authority = pool_account
+    )]
     pub farm_account: Box<Account<'info, TokenAccount>>,
-    #[account(mut)]
+    #[account(signer,
+        mut,
+        token::mint = farm_account.mint,
+        token::authority = global_state_account
+    )]
     pub pool_account: Box<Account<'info, TokenAccount>>,
 
     // Programs and Sysvars
@@ -104,9 +115,15 @@ pub struct Stake<'info> {
 #[derive(Accounts)]
 pub struct UnStake<'info> {
     
-    #[account(mut)]
+    #[account(signer,
+        mut,
+        token::authority = pool_account,
+    )]
     pub farm_account: Box<Account<'info, TokenAccount>>,
-    #[account(signer, mut)]
+    #[account(signer,
+        mut,
+        token::mint = farm_account.mint,
+    )]
     pub pool_account: Box<Account<'info, TokenAccount>>,
 
     // Programs and Sysvars
@@ -116,16 +133,25 @@ pub struct UnStake<'info> {
 #[derive(Accounts)]
 pub struct Harvest<'info> {
     
-    #[account(mut)]
+    #[account(signer, 
+        mut,
+        token::mint = harvest_account.mint,
+        token::authority = pool_account
+    )]
     pub farm_account: Box<Account<'info, TokenAccount>>,
-    #[account(mut)]
+    #[account(mut,
+        token::authority = harvest_signer
+    )]
     pub harvest_account: Box<Account<'info, TokenAccount>>,
     /// CHECK: checks done at caller prior to CPI
     #[account(signer)]
     pub harvest_signer: AccountInfo<'info>,
 
-    #[account(mut)]
-    pub user_token_account: Box<Account<'info, TokenAccount>>,
+    #[account(signer,
+        mut,
+        token::mint = harvest_account.mint
+    )]
+    pub pool_account: Box<Account<'info, TokenAccount>>,
 
     // Programs and Sysvars
     pub token_program: Program<'info, Token>,
