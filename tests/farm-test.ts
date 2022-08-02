@@ -20,8 +20,8 @@ describe("farm-test", () => {
   const farmProgram = anchor.workspace.Farm as Program<Farm>;
 
   // These keys can be imported in Wallet for using in Front End ( with already established contract along with its states and accounts)
-  const superUserSecret = new Uint8Array([74,8,235,214,225,87,247,153,76,104,243,166,43,59,50,105,237,211,112,199,207,152,141,203,189,185,108,61,159,101,168,163,121,16,202,210,55,117,224,24,168,49,209,57,237,203,188,8,201,32,105,150,73,179,187,175,222,32,151,165,242,144,75,185]);
-  const baseUserSecret = new Uint8Array([228,58,206,71,19,155,76,229,76,89,205,92,153,40,211,253,171,165,82,93,205,224,153,148,250,12,91,10,40,213,78,46,25,223,190,247,22,14,9,221,180,27,193,7,183,70,93,105,179,20,174,55,99,226,87,246,196,103,57,3,155,107,16,188]);
+  const superUserSecret = new Uint8Array([72,200,219,228,177,245,158,117,168,230,195,191,173,23,141,179,226,177,211,144,220,75,115,80,160,89,30,193,255,199,198,113,98,242,171,155,148,1,196,189,31,59,68,255,190,238,237,36,175,180,144,110,181,172,142,32,135,204,155,88,124,228,35,93]);
+  const baseUserSecret = new Uint8Array([232,204,247,3,136,186,142,99,53,249,131,141,169,213,122,60,87,246,39,107,6,212,102,213,16,43,149,28,35,136,248,208,208,154,129,101,124,42,135,241,200,41,213,62,20,10,89,168,235,20,198,201,225,187,58,161,113,139,243,94,34,80,248,96]);
 
   // const superUser = anchor.web3.Keypair.fromSecretKey(superUserSecret);
   // const baseUser = anchor.web3.Keypair.fromSecretKey(baseUserSecret);
@@ -42,7 +42,7 @@ describe("farm-test", () => {
 
   let testTokenMint: anchor.web3.PublicKey;
   // Mint to be used for restoring already established contract along with its states and accounts
-  // const testTokenMint = new PublicKey("EQPsEDvzNCJrmhYG97UV2y9KaHFxPC1N6WgRcZJchg4J");
+  // const testTokenMint = new PublicKey("A1ycKQ2Vy1uktK7uQTLad7Fy5PxQZCrKs28tSTfUgUrr");
 
   let poolTestTokenAccount: tokenAccount;
   let baseUserTestTokenAccount: tokenAccount;
