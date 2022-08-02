@@ -4,7 +4,7 @@ Mini Project done for the purpose of submitting as Assignment to Ratio Finance T
 
 ## How to Use Front End (already set Base User Keypair)
 
-Base User Secret Key (devnet) : [228,58,206,71,19,155,76,229,76,89,205,92,153,40,211,253,171,165,82,93,205,224,153,148,250,12,91,10,40,213,78,46,25,223,190,247,22,14,9,221,180,27,193,7,183,70,93,105,179,20,174,55,99,226,87,246,196,103,57,3,155,107,16,188]
+Base User Secret Key (devnet) : [232,204,247,3,136,186,142,99,53,249,131,141,169,213,122,60,87,246,39,107,6,212,102,213,16,43,149,28,35,136,248,208,208,154,129,101,124,42,135,241,200,41,213,62,20,10,89,168,235,20,198,201,225,187,58,161,113,139,243,94,34,80,248,96]
 
 Import the base user secret key from above to Wallet of your choice for interacting with the front end
 
