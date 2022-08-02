@@ -160,6 +160,8 @@ describe("farm-test", () => {
     assert.ok(poolTestTokenAccount.owner.equals(globalStatePda));
   });
 
+  // This works, but there is no need to mint to Pool, we are using a different harvest account for reaping rewards
+
   // it("Super User mint testToken to pool", async () => {
   //   const INITIAL_TEST_TOKEN_POOL = 100 * DECIMAL_MUL;
   //   await mintTo(provider.connection, wallet.payer, testTokenMint, poolAccountPda, superUser, INITIAL_TEST_TOKEN_POOL);
